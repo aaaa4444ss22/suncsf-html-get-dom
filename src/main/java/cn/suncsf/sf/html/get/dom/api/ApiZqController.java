@@ -70,11 +70,12 @@ public class ApiZqController {
                         .ignoreHttpErrors(true)
                         .cookies(map)
                         .get();
-
+                pageIndex++;
                 Elements elements = document.getElementsByAttributeValue("class", "card card-user-b s-pg16 s-brt1");
 
 
                 for (int i = 0; i < elements.size(); i++) {
+
                     Person person = new Person();
                     Element element = elements.get(i);
                     element = element.getElementsByAttributeValue("class", "info").first();
@@ -82,9 +83,12 @@ public class ApiZqController {
                     String url = element.attr("href");
                     String name = element.text();
                     Document meHome = null;
+                    System.out.println("http:" + url + "/about");
                     try {
                         meHome = Jsoup.connect("http:" + url + "/about")
-                                .timeout(2000).cookies(map).get();
+                                .timeout(2000).cookies(map)
+                                .userAgent(agent)
+                                .ignoreHttpErrors(true).get();
                     }catch (Exception e){
                         e.printStackTrace();
                     }
@@ -92,17 +96,32 @@ public class ApiZqController {
                         continue;
                     }
                     String sc = meHome.select("script").html();
-                    int index = sc.indexOf("电话：");
+                    int index = sc.indexOf("电话");
                     if (index < 0) {
-                        continue;
+                        String tempStr = "";
+                        index = sc.indexOf("微信");
+                        if(index > -1){
+                            String ct = sc.substring(index);
+                            index = ct.indexOf("FM.view");
+                            if(index > -1){
+                                ct = ct.substring(0,index);
+                            }
+                            tempStr += ct;
+                        }
+                        sc = tempStr;
+                        if(StringUtils.isBlank(sc)){
+                            continue;
+                        }
+                    }else{
+                        sc = sc.substring(index);
+                        sc = sc.substring(0, sc.indexOf("<\\/li>"));
+                        index = sc.indexOf("FM.view");
+                        if (index > -1) {
+                            sc = sc.substring(0, index);
+                        }
                     }
 
-                    sc = sc.substring(index);
-                    sc = sc.substring(0, sc.indexOf("<\\/li>"));
-                    index = sc.indexOf("FM.view");
-                    if (index > -1) {
-                        sc = sc.substring(0, index);
-                    }
+
                     String content = getTextFromHtml(Jsoup.parse(sc).body().text());
                     if (StringUtils.isNotBlank(content)) {
                         content = content.replace(" ", "")
@@ -116,7 +135,7 @@ public class ApiZqController {
                     person.setUrl(url);
                     person.setTel(content);
                     list.add(person);
-                    pageIndex++;
+
                 }
 
 
@@ -141,7 +160,7 @@ public class ApiZqController {
             response.setContentType("application/vnd.ms-excel");
             response.setHeader("Content-Disposition"
                     , "attachment;filename="
-                            + URLEncoder.encode("全报表数据导出("
+                            + URLEncoder.encode(field+"数据导出("
                                     + LocalDateTime.now().format( DateTimeFormatter.ISO_LOCAL_DATE_TIME) +").xls"
                             , "utf-8"));
             OutputStream stream = response.getOutputStream();
