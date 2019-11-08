@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 public class ApiZqController {
     static String phoneRegex = "(1|861)(3|5|8)\\d{9}$*";
     static String regex = "^[0][1-9]{2,3}-[0-9]{5,10}$";
-
+    static String dtregex = "^\\d{4}\\-\\d{1,2}\\-\\d{1,2}$";
     @GetMapping("/zqdt")
     public List<Person> shouldAnswerWithTrue(String field, int pageIndex, int pages, HttpServletResponse response) {
 
@@ -48,7 +48,7 @@ public class ApiZqController {
             map.put("SUBP", "0033WrSXqPxfM72wWs9jqgMF55529P9D9WhiexOd4VLhUIk_kVInXZ9I5JpV2heRe02E1K.cSXWpMC4odcXt");
             map.put("SUHB", "0qjkCp7v-5C29u");
             map.put("ULV", "1480858059441:4:2:2:3072989182787.392.1480858059338:1480834549292");
-            map.put("un", StringUtils.join(String.valueOf(new Date().getTime()),"@qq.com"));
+            map.put("un", StringUtils.join(String.valueOf(new Date().getTime()), "@qq.com"));
             map.put("UOR", "s.share.baidu.com,service.weibo.com,login.sina.com.cn");
             map.put("TC-Page-G0", "cdcf495cbaea129529aa606e7629fea7");
             map.put("TC-Ugrow-G0", "e66b2e50a7e7f417f6cc12eec600f517");
@@ -57,7 +57,7 @@ public class ApiZqController {
             map.put("wb_bub_find_3459285440", "1");
             map.put("wb_bub_find_5601838195", "1");
             map.put("WBStorage", "2c466cc84b6dda21|undefined");
-            String  agent="Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:57.0) Gecko/20100101 Firefox/57.0";
+            String agent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:57.0) Gecko/20100101 Firefox/57.0";
 //            System.setProperty("http.maxRedirects", "50");
 //            System.getProperties().setProperty("proxySet", "true");
 //            System.getProperties().put("https.proxyHost", "abc.com.cn");
@@ -85,14 +85,27 @@ public class ApiZqController {
                     Document meHome = null;
                     System.out.println("http:" + url + "/about");
                     try {
+                        Document dt = Jsoup.connect("http:" + url)
+                                .timeout(2000).cookies(map)
+                                .userAgent(agent)
+                                .ignoreHttpErrors(true).get();
+
+                        Elements dtmt = dt.select("script");
+                        String dts= getTelnum(dtmt.html(),dtregex);
+                        System.out.println(dtmt.html());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                    try {
                         meHome = Jsoup.connect("http:" + url + "/about")
                                 .timeout(2000).cookies(map)
                                 .userAgent(agent)
                                 .ignoreHttpErrors(true).get();
-                    }catch (Exception e){
+                    } catch (Exception e) {
                         e.printStackTrace();
                     }
-                    if(meHome == null){
+                    if (meHome == null) {
                         continue;
                     }
                     String sc = meHome.select("script").html();
@@ -100,19 +113,19 @@ public class ApiZqController {
                     if (index < 0) {
                         String tempStr = "";
                         index = sc.indexOf("微信");
-                        if(index > -1){
+                        if (index > -1) {
                             String ct = sc.substring(index);
                             index = ct.indexOf("FM.view");
-                            if(index > -1){
-                                ct = ct.substring(0,index);
+                            if (index > -1) {
+                                ct = ct.substring(0, index);
                             }
                             tempStr += ct;
                         }
                         sc = tempStr;
-                        if(StringUtils.isBlank(sc)){
+                        if (StringUtils.isBlank(sc)) {
                             continue;
                         }
-                    }else{
+                    } else {
                         sc = sc.substring(index);
                         sc = sc.substring(0, sc.indexOf("<\\/li>"));
                         index = sc.indexOf("FM.view");
@@ -132,12 +145,11 @@ public class ApiZqController {
                     }
 
                     person.setName(name);
-                    person.setUrl(url);
+                    person.setUrl("http:" + url);
                     person.setTel(content);
                     list.add(person);
 
                 }
-
 
 
             }
@@ -149,9 +161,9 @@ public class ApiZqController {
             row.createCell(1).setCellValue("网址");
             row.createCell(2).setCellValue("电话");
 
-            for (int i = 0; i <list.size(); i++) {
+            for (int i = 0; i < list.size(); i++) {
                 Person person = list.get(i);
-                row = sheet.createRow(i+1);
+                row = sheet.createRow(i + 1);
                 row.createCell(0).setCellValue(person.getName());
                 row.createCell(1).setCellValue(person.getUrl());
                 row.createCell(2).setCellValue(person.getTel());
@@ -160,8 +172,8 @@ public class ApiZqController {
             response.setContentType("application/vnd.ms-excel");
             response.setHeader("Content-Disposition"
                     , "attachment;filename="
-                            + URLEncoder.encode(field+"数据导出("
-                                    + LocalDateTime.now().format( DateTimeFormatter.ISO_LOCAL_DATE_TIME) +").xls"
+                            + URLEncoder.encode(field + "数据导出("
+                                    + LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + ").xls"
                             , "utf-8"));
             OutputStream stream = response.getOutputStream();
             workbook.write(stream);
