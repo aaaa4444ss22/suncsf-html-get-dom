@@ -1,7 +1,10 @@
 package cn.suncsf.sf.html.get.dom.api;
 
+import cn.suncsf.framework.core.utils.ArrayUtil;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.poi.hssf.usermodel.HSSFCellStyle;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.jsoup.Jsoup;
@@ -22,8 +25,12 @@ import java.net.URLEncoder;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping(value = "/api/zq")
@@ -31,6 +38,7 @@ public class ApiZqController {
     static String phoneRegex = "(1|861)(3|5|8)\\d{9}$*";
     static String regex = "^[0][1-9]{2,3}-[0-9]{5,10}$";
     static String dtregex = "^\\d{4}\\-\\d{1,2}\\-\\d{1,2}$";
+//    private static ThreadPoolExecutor pool = new ThreadPoolExecutor(1,2,1000,new BlockingDeque<>(10));
     @GetMapping("/zqdt")
     public List<Person> shouldAnswerWithTrue(String field, int pageIndex, int pages, HttpServletResponse response) {
 
@@ -58,98 +66,128 @@ public class ApiZqController {
             map.put("wb_bub_find_5601838195", "1");
             map.put("WBStorage", "2c466cc84b6dda21|undefined");
             String agent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:57.0) Gecko/20100101 Firefox/57.0";
-//            System.setProperty("http.maxRedirects", "50");
-//            System.getProperties().setProperty("proxySet", "true");
-//            System.getProperties().put("https.proxyHost", "abc.com.cn");
-//            System.getProperties().put("https.proxyPort", "3128");
+
             while (pageIndex < pages + 1) {
 
-                Document document = Jsoup.connect("https://s.weibo.com/user?q=" + field + "&auth=org_vip&page=" + pageIndex)
-                        .timeout(10000)
-                        .userAgent(agent)
-                        .ignoreHttpErrors(true)
-                        .cookies(map)
-                        .get();
-                pageIndex++;
-                Elements elements = document.getElementsByAttributeValue("class", "card card-user-b s-pg16 s-brt1");
+               try {
+                   Document document = Jsoup.connect("https://s.weibo.com/user?q=" + field + "&auth=org_vip&page=" + pageIndex)
+                           .timeout(10000)
+                           .userAgent(agent)
+                           .ignoreHttpErrors(true)
+                           .cookies(map)
+                           .get();
+                   pageIndex++;
+                   Elements elements = document.getElementsByAttributeValue("class", "card card-user-b s-pg16 s-brt1");
 
 
-                for (int i = 0; i < elements.size(); i++) {
 
-                    Person person = new Person();
-                    Element element = elements.get(i);
-                    element = element.getElementsByAttributeValue("class", "info").first();
-                    element = element.getElementsByTag("div").first().getElementsByTag("a").first();
-                    String url = element.attr("href");
-                    String name = element.text();
-                    Document meHome = null;
-                    System.out.println("http:" + url + "/about");
-                    try {
-                        Document dt = Jsoup.connect("http:" + url)
-                                .timeout(2000).cookies(map)
-                                .userAgent(agent)
-                                .ignoreHttpErrors(true).get();
+                   for (int i = 0; i < elements.size(); i++) {
+                       Person person = new Person();
+                       Element element = elements.get(i);
+                       element = element.getElementsByAttributeValue("class", "info").first();
+                       element = element.getElementsByTag("div").first().getElementsByTag("a").first();
+                       String url = element.attr("href");
+                       String name = element.text();
+                       String dates = "";
+                       Document meHome = null;
+                       try {
+                           Document home =  Jsoup.connect("http:"+url)
+                                   .timeout(2000)
+                                   .userAgent(agent)
+                                   .cookies(map)
+                                   .ignoreHttpErrors(true)
+                                   .get();
+                           String hmStr = home.html();
+                           boolean f = true;
+                           while (f){
+                               String dts = getPhoneStr(hmStr);
+                               if(StringUtils.isNotBlank(dts)){
+                                   dates += "\r\n,"+dts;
+                                   hmStr = hmStr.replace(dts,"");
+                                   continue;
+                               }
+                               f  = false;
+                           }
+                           System.out.println(dates);
+                       }catch (Exception e){
+                           e.printStackTrace();
+                       }
+                       System.out.println("http:" + url + "/about");
+                       try {
+                           Document dt = Jsoup.connect("http:" + url)
+                                   .timeout(2000)
+                                   .cookies(map)
+                                   .userAgent(agent)
+                                   .ignoreHttpErrors(true).get();
 
-                        Elements dtmt = dt.select("script");
-                        String dts= getTelnum(dtmt.html(),dtregex);
-                        System.out.println(dtmt.html());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                           Elements dtmt = dt.select("script");
+                           String dts= getTelnum(dtmt.html(),dtregex);
+//                        System.out.println(dtmt.html());
+                       } catch (Exception e) {
+                           e.printStackTrace();
+                       }
 
-                    try {
-                        meHome = Jsoup.connect("http:" + url + "/about")
-                                .timeout(2000).cookies(map)
-                                .userAgent(agent)
-                                .ignoreHttpErrors(true).get();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    if (meHome == null) {
-                        continue;
-                    }
-                    String sc = meHome.select("script").html();
-                    int index = sc.indexOf("电话");
-                    if (index < 0) {
-                        String tempStr = "";
-                        index = sc.indexOf("微信");
-                        if (index > -1) {
-                            String ct = sc.substring(index);
-                            index = ct.indexOf("FM.view");
-                            if (index > -1) {
-                                ct = ct.substring(0, index);
-                            }
-                            tempStr += ct;
-                        }
-                        sc = tempStr;
-                        if (StringUtils.isBlank(sc)) {
-                            continue;
-                        }
-                    } else {
-                        sc = sc.substring(index);
-                        sc = sc.substring(0, sc.indexOf("<\\/li>"));
-                        index = sc.indexOf("FM.view");
-                        if (index > -1) {
-                            sc = sc.substring(0, index);
-                        }
-                    }
+                       try {
+                           meHome = Jsoup.connect("http:" + url + "/about")
+                                   .timeout(2000).cookies(map)
+                                   .userAgent(agent)
+                                   .ignoreHttpErrors(true).get();
+                       } catch (Exception e) {
+                           e.printStackTrace();
+                       }
+                       try {
+                           if (meHome == null) {
+                               continue;
+                           }
+                           String sc = meHome.select("script").html();
+                           int index = sc.indexOf("电话");
+                           if (index < 0) {
+                               String tempStr = "";
+                               index = sc.indexOf("微信");
+                               if (index > -1) {
+                                   String ct = sc.substring(index);
+                                   index = ct.indexOf("FM.view");
+                                   if (index > -1) {
+                                       ct = ct.substring(0, index);
+                                   }
+                                   tempStr += ct;
+                               }
+                               sc = tempStr;
+                               if (StringUtils.isBlank(sc)) {
+                                   continue;
+                               }
+                           } else {
+                               sc = sc.substring(index);
+                               sc = sc.substring(0, sc.indexOf("<\\/li>"));
+                               index = sc.indexOf("FM.view");
+                               if (index > -1) {
+                                   sc = sc.substring(0, index);
+                               }
+                           }
 
 
-                    String content = getTextFromHtml(Jsoup.parse(sc).body().text());
-                    if (StringUtils.isNotBlank(content)) {
-                        content = content.replace(" ", "")
-                                .replace("\\", "")
-                                .replace("t", "")
-                                .replace("r", "")
-                                .replace("n", "");
-                    }
+                           String content = getTextFromHtml(Jsoup.parse(sc).body().text());
+                           if (StringUtils.isNotBlank(content)) {
+                               content = content.replace(" ", "")
+                                       .replace("\\", "")
+                                       .replace("t", "")
+                                       .replace("r", "")
+                                       .replace("n", "");
+                           }
 
-                    person.setName(name);
-                    person.setUrl("http:" + url);
-                    person.setTel(content);
-                    list.add(person);
+                           person.setName(name);
+                           person.setUrl("http:" + url);
+                           person.setTel(content);
+                           person.setDates(dates);
+                           list.add(person);
+                       }catch (Exception e){
+                           e.printStackTrace();
+                       }
 
-                }
+                   }
+               }catch (Exception e){
+                   e.printStackTrace();
+               }
 
 
             }
@@ -160,19 +198,25 @@ public class ApiZqController {
             row.createCell(0).setCellValue("名称");
             row.createCell(1).setCellValue("网址");
             row.createCell(2).setCellValue("电话");
-
+            row.createCell(3).setCellValue("相关时间");
+            HSSFCellStyle cellStyle = workbook.createCellStyle();
+            cellStyle.setWrapText(true);
             for (int i = 0; i < list.size(); i++) {
                 Person person = list.get(i);
                 row = sheet.createRow(i + 1);
                 row.createCell(0).setCellValue(person.getName());
                 row.createCell(1).setCellValue(person.getUrl());
+
                 row.createCell(2).setCellValue(person.getTel());
+                Cell cell =  row.createCell(3);
+                cell.setCellStyle(cellStyle);
+                cell.setCellValue(person.getDates());
             }
 
             response.setContentType("application/vnd.ms-excel");
             response.setHeader("Content-Disposition"
                     , "attachment;filename="
-                            + URLEncoder.encode(field + "数据导出("
+                            + URLEncoder.encode(field + "（"+(pageIndex-1)+"-"+pages+"）数据导出("
                                     + LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + ").xls"
                             , "utf-8"));
             OutputStream stream = response.getOutputStream();
@@ -185,6 +229,16 @@ public class ApiZqController {
         return list;
     }
 
+
+    public String getPhoneStr(String hmStr){
+        String regEx="\\d{4}-\\d{2}-\\d{2}";
+        Pattern p = Pattern.compile(regEx);
+        Matcher m = p.matcher(hmStr);
+        if(m.find()){
+          return m.group();
+        }
+        return null;
+    }
     public String getTelnum(String sParam, String p) {
 
         if (sParam.length() <= 0)
@@ -247,6 +301,15 @@ public class ApiZqController {
         private String name;
         private String url;
         private String tel;
+        private String dates;
+
+        public String getDates() {
+            return dates;
+        }
+
+        public void setDates(String dates) {
+            this.dates = dates;
+        }
 
         public String getName() {
             return name;
